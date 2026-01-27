@@ -1,8 +1,8 @@
 /**
- * Basic usage examples for worker-ai-dsl.
+ * Basic usage examples for declarative-worker-api.
  */
 
-import type { Task } from "@worker-ai-dsl/core";
+import type { Task } from "@dwa/core";
 
 // Simple chat task
 export const chatTask: Task = {

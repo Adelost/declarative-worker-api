@@ -1,13 +1,13 @@
 /**
- * @worker-ai-dsl/client
+ * @dwa/client
  *
- * Minimal typed SDK for worker-ai-dsl.
+ * Minimal typed SDK for declarative-worker-api.
  * Works in any Node.js/browser environment.
  *
- * For tRPC users: import the router types directly from @worker-ai-dsl/orchestrator
+ * For tRPC users: import the router types directly from @dwa/orchestrator
  */
 
-import type { TaskName, TaskPayloads } from "@worker-ai-dsl/core";
+import type { TaskName, TaskPayloads } from "@dwa/core";
 
 export interface WorkerAIConfig {
   baseUrl: string;
@@ -169,4 +169,4 @@ export class WorkerAI {
 export default WorkerAI;
 
 // Re-export types for consumers
-export type { TaskName, TaskPayloads } from "@worker-ai-dsl/core";
+export type { TaskName, TaskPayloads } from "@dwa/core";

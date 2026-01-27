@@ -8,7 +8,7 @@ import type {
   TaskResult,
   RayConfig,
   ResourcePool,
-} from "@worker-ai-dsl/core";
+} from "@dwa/core";
 
 export class RayBackend implements Backend {
   name = "ray";

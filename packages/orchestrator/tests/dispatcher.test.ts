@@ -9,7 +9,7 @@ import {
   clearBackends,
   type Backend,
   type Task,
-} from "@worker-ai-dsl/core";
+} from "@dwa/core";
 
 // Mock backend
 function createMockBackend(name: string): Backend {

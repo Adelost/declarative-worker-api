@@ -3,7 +3,7 @@
  * Generates Mermaid diagrams for pipeline DAGs.
  */
 
-import type { Task, Step } from "@worker-ai-dsl/core";
+import type { Task, Step } from "@dwa/core";
 
 /**
  * Generate a Mermaid flowchart diagram for a pipeline.

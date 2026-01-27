@@ -3,7 +3,7 @@
  * Uses Server-Sent Events (SSE) for real-time updates.
  */
 
-import type { Task } from "@worker-ai-dsl/core";
+import type { Task } from "@dwa/core";
 
 export interface StreamEvent {
   type: "chunk" | "progress" | "complete" | "error";

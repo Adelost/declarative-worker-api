@@ -4,8 +4,8 @@
  * Supports chunking for long-running tasks.
  */
 
-import type { Task, Step } from "@worker-ai-dsl/core";
-import { selectBackend } from "@worker-ai-dsl/core";
+import type { Task, Step } from "@dwa/core";
+import { selectBackend } from "@dwa/core";
 import {
   type ChunkConfig,
   shouldChunk,

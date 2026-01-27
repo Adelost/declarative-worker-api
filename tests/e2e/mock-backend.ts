@@ -3,7 +3,7 @@
  * Simulates Modal/Ray responses without actual network calls.
  */
 
-import type { Backend, Task, TaskResult, ResourcePool } from "@worker-ai-dsl/core";
+import type { Backend, Task, TaskResult, ResourcePool } from "@dwa/core";
 
 export interface MockTaskHandler {
   (payload: Record<string, unknown>): unknown | Promise<unknown>;

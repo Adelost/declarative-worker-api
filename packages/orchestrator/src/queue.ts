@@ -4,7 +4,7 @@
 
 import { Queue, Worker, Job, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
-import type { Task, TaskResult } from "@worker-ai-dsl/core";
+import type { Task, TaskResult } from "@dwa/core";
 import { processTask } from "./engine/dispatcher.js";
 import { runEffects } from "./engine/effects.js";
 
@@ -25,9 +25,9 @@ export function getQueues(): Record<string, Queue> {
   if (!_queues) {
     const connection = getConnection();
     _queues = {
-      default: new Queue("worker-ai-dsl-default", { connection }),
-      gpu: new Queue("worker-ai-dsl-gpu", { connection }),
-      cpu: new Queue("worker-ai-dsl-cpu", { connection }),
+      default: new Queue("declarative-worker-api-default", { connection }),
+      gpu: new Queue("declarative-worker-api-gpu", { connection }),
+      cpu: new Queue("declarative-worker-api-cpu", { connection }),
     };
   }
   return _queues;
@@ -200,12 +200,12 @@ export function createWorkers() {
   };
 
   return {
-    default: new Worker("worker-ai-dsl-default", processor, workerOptions),
-    gpu: new Worker("worker-ai-dsl-gpu", processor, {
+    default: new Worker("declarative-worker-api-default", processor, workerOptions),
+    gpu: new Worker("declarative-worker-api-gpu", processor, {
       ...workerOptions,
       concurrency: parseInt(process.env.GPU_WORKER_CONCURRENCY || "2"),
     }),
-    cpu: new Worker("worker-ai-dsl-cpu", processor, workerOptions),
+    cpu: new Worker("declarative-worker-api-cpu", processor, workerOptions),
   };
 }
 

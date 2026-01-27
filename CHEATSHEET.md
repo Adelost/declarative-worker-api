@@ -1,4 +1,4 @@
-# worker-ai-dsl Cheatsheet
+# declarative-worker-api Cheatsheet
 
 Quick reference for common patterns.
 

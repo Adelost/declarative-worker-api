@@ -4,8 +4,8 @@
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import type { Task } from "@worker-ai-dsl/core";
-import { registerBackend } from "@worker-ai-dsl/core";
+import type { Task } from "@dwa/core";
+import { registerBackend } from "@dwa/core";
 import { enqueueTask, getTaskStatus, createWorkers, shutdown } from "./queue.js";
 import { ModalBackend } from "./backends/modal.js";
 import { RayBackend } from "./backends/ray.js";

@@ -3,7 +3,7 @@
  * Splits inputs based on task metadata and merges results.
  */
 
-import type { Task } from "@worker-ai-dsl/core";
+import type { Task } from "@dwa/core";
 
 export interface ChunkConfig {
   inputField: string;

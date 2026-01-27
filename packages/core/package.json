@@ -1,5 +1,5 @@
 {
-  "name": "@worker-ai-dsl/core",
+  "name": "@dwa/core",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",

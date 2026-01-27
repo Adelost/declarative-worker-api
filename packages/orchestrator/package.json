@@ -1,5 +1,5 @@
 {
-  "name": "@worker-ai-dsl/orchestrator",
+  "name": "@dwa/orchestrator",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@worker-ai-dsl/core": "workspace:*",
+    "@dwa/core": "workspace:*",
     "@fastify/cors": "^9.0.0",
     "bullmq": "^5.0.0",
     "fastify": "^4.25.0",

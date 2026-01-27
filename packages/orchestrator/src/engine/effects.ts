@@ -2,7 +2,7 @@
  * Effect handlers for task lifecycle events.
  */
 
-import type { Effect, Task } from "@worker-ai-dsl/core";
+import type { Effect, Task } from "@dwa/core";
 import { enqueueTask } from "../queue.js";
 
 export interface EffectContext {

@@ -1,4 +1,4 @@
-# worker-ai-dsl
+# declarative-worker-api
 
 Declarative worker/task system with parallel DAG execution, supporting Modal and Ray backends.
 
@@ -372,7 +372,7 @@ interface StepStatus {
 Subscribe to real-time pipeline events:
 
 ```typescript
-import { processTask } from "@worker-ai-dsl/orchestrator";
+import { processTask } from "@dwa/orchestrator";
 
 const result = await processTask(task,
   (progress) => console.log(`Progress: ${progress}%`),
@@ -461,7 +461,7 @@ pnpm dev
 ### Project Structure
 
 ```
-worker-ai-dsl/
+declarative-worker-api/
 ├── packages/
 │   ├── core/                 # Types, registry
 │   │   └── src/types/

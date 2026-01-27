@@ -8,7 +8,7 @@ import type {
   TaskResult,
   ModalConfig,
   ResourcePool,
-} from "@worker-ai-dsl/core";
+} from "@dwa/core";
 
 export class ModalBackend implements Backend {
   name = "modal";

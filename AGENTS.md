@@ -1,10 +1,10 @@
-# Agent Context: worker-ai-dsl
+# Agent Context: declarative-worker-api
 
 This document provides context for AI assistants working with this codebase.
 
 ## Project Overview
 
-**worker-ai-dsl** is a declarative task/worker system for AI workloads. Tasks are defined as pure data objects (no callbacks, no imperative code). The system supports:
+**declarative-worker-api** is a declarative task/worker system for AI workloads. Tasks are defined as pure data objects (no callbacks, no imperative code). The system supports:
 
 - **Single tasks**: Direct execution via Modal/Ray backends
 - **Pipelines**: Multi-step workflows with DAG-based parallel execution

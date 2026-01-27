@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { runEffects, type EffectContext } from "../src/engine/effects.js";
-import type { Effect, Task } from "@worker-ai-dsl/core";
+import type { Effect, Task } from "@dwa/core";
 
 // Mock fetch globally
 const mockFetch = vi.fn();

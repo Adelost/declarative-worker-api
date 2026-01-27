@@ -4,7 +4,7 @@ import { resolve } from "path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@worker-ai-dsl/core": resolve(__dirname, "packages/core/src/index.ts"),
+      "@dwa/core": resolve(__dirname, "packages/core/src/index.ts"),
     },
   },
   test: {

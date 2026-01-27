@@ -1,7 +1,7 @@
 {
-  "name": "@worker-ai-dsl/client",
+  "name": "@dwa/client",
   "version": "0.1.0",
-  "description": "Typed client for worker-ai-dsl",
+  "description": "Typed client for declarative-worker-api",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,12 +19,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@worker-ai-dsl/core": "workspace:*"
+    "@dwa/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
   },
   "peerDependencies": {
-    "@worker-ai-dsl/core": "workspace:*"
+    "@dwa/core": "workspace:*"
   }
 }

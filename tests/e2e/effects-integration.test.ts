@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { Effect, Task } from "@worker-ai-dsl/core";
+import type { Effect, Task } from "@dwa/core";
 import { runEffects, type EffectContext } from "../../packages/orchestrator/src/engine/effects.js";
 
 // Mock fetch

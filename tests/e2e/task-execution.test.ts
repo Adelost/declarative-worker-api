@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { registerBackend, clearBackends, type Task } from "@worker-ai-dsl/core";
+import { registerBackend, clearBackends, type Task } from "@dwa/core";
 import { processTask } from "../../packages/orchestrator/src/engine/dispatcher.js";
 import { MockBackend } from "./mock-backend.js";
 

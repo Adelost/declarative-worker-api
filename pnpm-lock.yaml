@@ -20,7 +20,7 @@ importers:
 
   packages/client:
     dependencies:
-      '@worker-ai-dsl/core':
+      '@dwa/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -36,12 +36,12 @@ importers:
 
   packages/orchestrator:
     dependencies:
+      '@dwa/core':
+        specifier: workspace:*
+        version: link:../core
       '@fastify/cors':
         specifier: ^9.0.0
         version: 9.0.1
-      '@worker-ai-dsl/core':
-        specifier: workspace:*
-        version: link:../core
       bullmq:
         specifier: ^5.0.0
         version: 5.67.1

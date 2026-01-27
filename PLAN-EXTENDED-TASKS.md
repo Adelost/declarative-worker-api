@@ -1,4 +1,4 @@
-# Plan: Extended Tasks for worker-ai-dsl
+# Plan: Extended Tasks for declarative-worker-api
 
 Based on analysis of podtotxt, voiceme, and ai-dsl.
 
