@@ -1,13 +1,13 @@
-# declarative-worker-api
+# Declarative Worker API (DWA)
 
-Declarative worker/task system with parallel DAG execution, supporting Modal and Ray backends.
+Declarative task/worker system with parallel DAG execution, supporting Modal and Ray backends.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Declarative Task Definition                   │
-│  { type: "yolo.detect", backend: "modal", payload: {...} }      │
+│  { type: "image.detect", backend: "modal", payload: {...} }     │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
                                 ▼
@@ -23,7 +23,7 @@ Declarative worker/task system with parallel DAG execution, supporting Modal and
               ▼                                   ▼
 ┌─────────────────────────────────────────────────┐
 │         @task Decorator Auto-Registration       │
-│  shared/tasks/{see,hear,think,speak,...}/*.py   │
+│  shared/tasks/{video,audio,image,text,data}/*.py│
 │         ↓ pnpm gen:types                        │
 │  packages/core/src/types/generated.ts           │
 └───────────────────────────────┬─────────────────┘
@@ -54,7 +54,7 @@ MODAL_URL=https://your-app.modal.run pnpm dev
 # 5. Submit a task
 curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
-  -d '{"type": "openai.chat", "payload": {"prompt": "Hello!"}}'
+  -d '{"type": "text.chat", "payload": {"prompt": "Hello!"}}'
 ```
 
 ## Core Concepts
@@ -63,7 +63,7 @@ curl -X POST http://localhost:3000/api/tasks \
 
 ```typescript
 const task: Task = {
-  type: "openai.chat",
+  type: "text.chat",
   backend: "modal",
   payload: { prompt: "Explain quantum computing" },
   onSuccess: [{ $event: "toast", text: "Done!" }]
@@ -77,9 +77,9 @@ const pipeline: Task = {
   type: "podcast-transcription",
   payload: { url: "https://example.com/episode.mp3" },
   steps: [
-    { task: "download.file", input: { url: "{{payload.url}}" } },
-    { task: "whisper.transcribe", input: { audio_path: "{{steps.0.path}}" } },
-    { task: "openai.summarize", input: { text: "{{steps.1.text}}" } }
+    { task: "data.download", input: { url: "{{payload.url}}" } },
+    { task: "audio.transcribe", input: { audio_path: "{{steps.0.path}}" } },
+    { task: "text.summarize", input: { text: "{{steps.1.text}}" } }
   ]
 };
 ```
@@ -93,22 +93,21 @@ const videoAnalysis: Task = {
   type: "video-analysis",
   payload: { url: "https://example.com/video.mp4" },
   steps: [
-    { id: "download", task: "download.file", input: { url: "{{payload.url}}" } },
+    { id: "download", task: "data.download", input: { url: "{{payload.url}}" } },
 
     // These run in parallel after download
-    { id: "frames", task: "scenes.detect", dependsOn: ["download"] },
-    { id: "audio", task: "convert.audio", dependsOn: ["download"] },
+    { id: "frames", task: "video.extract_frames", dependsOn: ["download"] },
+    { id: "audio", task: "video.extract_audio", dependsOn: ["download"] },
 
     // These run in parallel after frames
-    { id: "yolo", task: "yolo.detect", dependsOn: ["frames"] },
-    { id: "faces", task: "faces.detect", dependsOn: ["frames"] },
-    { id: "siglip", task: "siglip.embed", dependsOn: ["frames"] },
+    { id: "detect", task: "image.detect", dependsOn: ["frames"] },
+    { id: "embed", task: "embed.image", dependsOn: ["frames"] },
 
     // This runs after audio
-    { id: "whisper", task: "whisper.transcribe", dependsOn: ["audio"] },
+    { id: "transcribe", task: "audio.transcribe", dependsOn: ["audio"] },
 
     // Final aggregation waits for all
-    { id: "merge", task: "analyze.video", dependsOn: ["yolo", "faces", "siglip", "whisper"] }
+    { id: "merge", task: "data.aggregate", dependsOn: ["detect", "embed", "transcribe"] }
   ]
 };
 ```
@@ -116,10 +115,9 @@ const videoAnalysis: Task = {
 **Execution flow:**
 ```
 download
-   ├── frames ──┬── yolo ────┐
-   │            ├── faces ───┼── merge
-   │            └── siglip ──┘
-   └── audio ───── whisper ──┘
+   ├── frames ──┬── detect ───┐
+   │            └── embed ────┼── merge
+   └── audio ───── transcribe─┘
 ```
 
 ### forEach Iteration
@@ -129,7 +127,7 @@ Process arrays in parallel with concurrency control:
 ```typescript
 {
   id: "describe_scenes",
-  task: "florence.caption",
+  task: "text.caption",
   dependsOn: ["detect_scenes"],
   forEach: "{{steps.detect_scenes.scenes}}",  // Array to iterate
   forEachConcurrency: 4,                       // Max 4 parallel
@@ -140,91 +138,94 @@ Process arrays in parallel with concurrency control:
 }
 ```
 
-## Task Categories
+## Task Organization
 
-Tasks are organized by category using the `@task` decorator with auto-registration:
+Tasks are organized by **data type** and use **tags** for flexible filtering:
 
-### see/ - Vision Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `yolo.detect` | Object detection | T4 |
-| `yolo.segment` | Instance segmentation | T4 |
-| `yolo.pose` | Pose estimation | T4 |
-| `yolo.track` | Object tracking | T4 |
-| `sam2.segment` | SAM2 segmentation | A10G |
-| `sam2.track` | Video segmentation | A10G |
-| `florence.caption` | Image captioning | T4 |
-| `florence.detect` | Dense detection | T4 |
-| `florence.ocr` | OCR | T4 |
-| `siglip.embed` | Image embeddings | T4 |
-| `siglip.classify` | Zero-shot classification | T4 |
-| `depth.estimate` | Depth estimation | T4 |
-| `faces.detect` | Face detection | T4 |
-| `faces.embed` | Face embeddings | T4 |
-| `faces.cluster` | Face clustering | T4 |
+### video/ - Video Processing
+| Task | Tags | Description |
+|------|------|-------------|
+| `video.extract_frames` | generic, extract | Extract frames from video |
+| `video.extract_audio` | generic, extract | Extract audio track |
+| `video.convert` | generic, convert | Transcode video |
+| `video.detect_scenes` | ai, detect | AI scene detection |
+| `video.track` | ai, detect, track | Object tracking |
 
-### hear/ - Audio Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `whisper.transcribe` | Whisper transcription | T4 |
-| `whisper.transcribe_stream` | Streaming transcription | T4 |
-| `whisper.detect_language` | Language detection | T4 |
-| `diarize.speakers` | Speaker diarization | T4 |
+### audio/ - Audio Processing
+| Task | Tags | Description |
+|------|------|-------------|
+| `audio.convert` | generic, convert | Format conversion |
+| `audio.transcribe` | ai, transcribe | Whisper transcription |
+| `audio.transcribe_stream` | ai, transcribe, streaming | Streaming transcription |
+| `audio.detect_language` | ai, detect | Language detection |
+| `audio.diarize` | ai, diarize | Speaker diarization |
+| `audio.tts` | ai, generate | Text-to-speech |
 
-### think/ - LLM Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `openai.chat` | Chat completion | No |
-| `openai.chat_stream` | Streaming chat | No |
-| `openai.embed` | Text embeddings | No |
-| `openai.summarize` | Summarization | No |
-| `openai.extract` | Structured extraction | No |
-| `openai.classify` | Text classification | No |
-| `openai.translate` | Translation | No |
+### image/ - Image Processing
+| Task | Tags | Description |
+|------|------|-------------|
+| `image.transform` | generic, transform | Resize, crop, compress |
+| `image.detect` | ai, detect | Object detection (YOLO) |
+| `image.segment` | ai, segment | Instance segmentation |
+| `image.pose` | ai, detect, pose | Pose estimation |
+| `image.detect_batch` | ai, detect, batch | Batch detection |
 
-### speak/ - TTS Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `openai_tts.synthesize` | OpenAI TTS | No |
-| `elevenlabs.synthesize` | ElevenLabs TTS | No |
-| `chatterbox.synthesize` | Local TTS | T4 |
-| `sesame.synthesize` | Sesame TTS | T4 |
+### text/ - Text Processing
+| Task | Tags | Description |
+|------|------|-------------|
+| `text.chunk` | generic, transform | Split text into chunks |
+| `text.chat` | ai, generate | LLM chat completion |
+| `text.summarize` | ai, generate | Summarization |
+| `text.translate` | ai, generate | Translation |
 
-### get/ - Input Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `download.file` | Download file | No |
-| `download.youtube` | Download YouTube | No |
-| `rss.fetch` | Fetch RSS feed | No |
+### data/ - Data Operations
+| Task | Tags | Description |
+|------|------|-------------|
+| `data.download` | generic, fetch | Download file |
+| `data.download_youtube` | generic, fetch | Download from YouTube |
+| `data.rss` | generic, fetch | Fetch RSS feed |
+| `embed.text` | ai, embed | Text embeddings |
+| `embed.image` | ai, embed | Image embeddings (CLIP) |
+| `search.vectors` | ai, search | Vector similarity search |
 
-### transform/ - Utility Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `convert.audio` | Audio format conversion | No |
-| `convert.video` | Video format conversion | No |
-| `chunk.audio` | Audio chunking | No |
-| `chunk.text` | Text chunking | No |
-| `image.resize` | Image resizing | No |
-| `image.crop` | Image cropping | No |
+## Tags
 
-### find/ - Search Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `semantic.search` | Semantic text search | No |
-| `semantic.embed` | Text embeddings | No |
-| `multimodal.search` | Text + image search | T4 |
-| `vector.upsert` | Vector store upsert | No |
-| `vector.query` | Vector store query | No |
+Tasks use tags for flexible filtering instead of rigid categories:
 
-### watch/ - Video Tasks
-| Task | Description | GPU |
-|------|-------------|-----|
-| `analyze.video` | Full analysis pipeline | T4 |
-| `scenes.detect` | Scene detection | No |
-| `scenes.describe` | Scene descriptions | T4 |
-| `tracking.objects` | Object tracking | T4 |
-| `tracking.faces` | Face tracking | T4 |
+```python
+@task(
+    name="audio.transcribe",
+    tags=["audio", "text", "ai", "transcribe"],
+    gpu="T4",
+)
+```
 
+### Standard Tags
+
+| Type | Tags |
+|------|------|
+| Data type | `video`, `audio`, `image`, `text`, `data` |
+| Operation | `transform`, `extract`, `embed`, `search`, `generate`, `detect`, `convert` |
+| AI/Generic | `ai`, `generic` |
+| Resources | `gpu`, `streaming` (auto-added) |
+
+### Filtering Tasks
+
+```python
+from tasks import filter_by_tag, filter_by_tags
+
+# All GPU tasks
+filter_by_tag("gpu")
+
+# All audio-related tasks
+filter_by_tag("audio")
+
+# AI tasks for images
+filter_by_tags(["ai", "image"])
+
+# Video OR audio tasks
+filter_by_tags(["video", "audio"], match_all=False)
+```
 
 ## Effects
 
@@ -232,7 +233,7 @@ Triggered at task lifecycle points:
 
 ```typescript
 const task: Task = {
-  type: "openai.chat",
+  type: "text.chat",
   payload: { prompt: "Hello" },
 
   onPending: [
@@ -277,179 +278,14 @@ const task: Task = {
 | `POST` | `/api/visualize` | Generate DAG diagram |
 | `GET` | `/health` | Health check |
 
-### Create Task
-
-```bash
-curl -X POST http://localhost:3000/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "openai.chat",
-    "payload": {"prompt": "Hello"},
-    "onSuccess": [{"$event": "toast", "text": "Done!"}]
-  }'
-```
-
-**Response:**
-```json
-{
-  "id": "abc123",
-  "status": "pending",
-  "queue": "default"
-}
-```
-
-### Get Task Status
-
-```bash
-curl http://localhost:3000/api/tasks/abc123
-```
-
-**Response:**
-```json
-{
-  "id": "abc123",
-  "status": "completed",
-  "progress": 100,
-  "result": {"response": "Hello! How can I help?"},
-  "startedAt": "2024-01-27T10:00:00Z",
-  "completedAt": "2024-01-27T10:00:02Z"
-}
-```
-
-### List Tasks
-
-```bash
-curl "http://localhost:3000/api/tasks?queue=gpu&status=active&limit=10"
-```
-
-### Visualize Pipeline
-
-```bash
-curl -X POST http://localhost:3000/api/visualize \
-  -H "Content-Type: application/json" \
-  -d '{
-    "steps": [
-      {"id": "a", "task": "download.file"},
-      {"id": "b", "task": "yolo.detect", "dependsOn": ["a"]},
-      {"id": "c", "task": "faces.detect", "dependsOn": ["a"]}
-    ]
-  }'
-```
-
-**Response:**
-```json
-{
-  "mermaid": "graph TD\n  a[process\\ndownload]\n  b[vision\\nyolo]\n  ...",
-  "url": "https://mermaid.live/edit#pako:..."
-}
-```
-
-## Pipeline Result Format
-
-```typescript
-interface PipelineResult {
-  steps: unknown[];                    // Ordered results array
-  stepResults: Record<string, unknown>; // Results by step ID
-  stepStatus: StepStatus[];            // Execution status per step
-  finalResult: unknown;                // Last step's result
-  totalDuration: number;               // Total ms
-  parallelGroups: string[][];          // Which steps ran together
-}
-
-interface StepStatus {
-  id: string;
-  task: string;
-  status: "pending" | "running" | "completed" | "failed" | "skipped";
-  startedAt?: Date;
-  completedAt?: Date;
-  duration?: number;
-  error?: string;
-}
-```
-
-## Pipeline Events
-
-Subscribe to real-time pipeline events:
-
-```typescript
-import { processTask } from "@dwa/orchestrator";
-
-const result = await processTask(task,
-  (progress) => console.log(`Progress: ${progress}%`),
-  (event) => {
-    switch (event.type) {
-      case "step:start":
-        console.log(`Starting ${event.stepId}: ${event.stepTask}`);
-        break;
-      case "step:complete":
-        console.log(`Completed ${event.stepId} in ${event.data?.duration}ms`);
-        break;
-      case "step:error":
-        console.log(`Failed ${event.stepId}: ${event.data?.error}`);
-        break;
-      case "pipeline:complete":
-        console.log(`Pipeline done in ${event.data?.totalDuration}ms`);
-        break;
-    }
-  }
-);
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REDIS_URL` | Redis connection | `redis://localhost:6379` |
-| `MODAL_URL` | Modal backend URL | - |
-| `MODAL_TOKEN` | Modal auth token | - |
-| `RAY_URL` | Ray Serve URL | - |
-| `PORT` | Server port | `3000` |
-| `WORKER_CONCURRENCY` | Default workers | `5` |
-| `GPU_WORKER_CONCURRENCY` | GPU workers | `2` |
-
-### Task Resources
-
-```typescript
-const task: Task = {
-  type: "yolo.detect",
-  payload: { image_path: "..." },
-  resources: {
-    gpu: "T4",        // GPU type
-    vram: 8000,       // MB required
-    ram: 16000,       // MB required
-    timeout: 300      // seconds
-  }
-};
-```
-
-### Retry Configuration
-
-```typescript
-const task: Task = {
-  type: "openai.chat",
-  payload: { prompt: "Hello" },
-  retry: {
-    attempts: 3,
-    backoff: "exponential",  // or "fixed"
-    delay: 1000,             // initial delay ms
-    maxDelay: 30000          // max delay for exponential
-  }
-};
-```
-
 ## Development
 
 ```bash
 # Install dependencies
 pnpm install
 
-# Run all tests (93 total)
+# Run tests
 pnpm test
-
-# Run e2e tests only
-pnpm test:e2e
 
 # Type check
 pnpm typecheck
@@ -467,6 +303,7 @@ declarative-worker-api/
 │   │   └── src/types/
 │   │       ├── task.ts       # Task, Step, Effect
 │   │       └── generated.ts  # Auto-generated from Python
+│   ├── client/               # API client
 │   └── orchestrator/         # Node.js server
 │       └── src/
 │           ├── server.ts     # Fastify API
@@ -477,60 +314,49 @@ declarative-worker-api/
 │               ├── chunking.ts    # Audio/video chunking
 │               └── streaming.ts   # SSE streaming
 ├── backends/
-│   ├── modal/                # Modal backend (auto-registered)
-│   │   └── app.py
+│   ├── modal/                # Modal backend
 │   └── ray/                  # Ray backend
-│       └── serve.py
 ├── shared/tasks/             # Python tasks with @task decorator
 │   ├── decorator.py          # @task decorator + registry
 │   ├── discovery.py          # Auto-discovery
 │   ├── types.py              # TaskMeta, ChunkConfig
-│   ├── see/                  # Vision: yolo, sam2, florence, etc.
-│   ├── hear/                 # Audio: whisper, diarize
-│   ├── think/                # LLM: openai
-│   ├── speak/                # TTS: openai_tts, elevenlabs, etc.
-│   ├── get/                  # Input: download, rss
-│   ├── transform/            # Utility: convert, chunk, image
-│   ├── find/                 # Search: semantic, vector
-│   └── watch/                # Video: analyze, scenes, tracking
-├── scripts/
-│   ├── gen_types.py          # TypeScript generator
-│   └── check_types.py        # CI validation
+│   ├── video/                # Video: extract, convert, scenes
+│   ├── audio/                # Audio: convert, transcribe, tts, diarize
+│   ├── image/                # Image: transform, detect
+│   ├── text/                 # Text: chunk, llm
+│   └── data/                 # Data: fetch, rss, search, embed
 └── tests/
     └── e2e/                  # Integration tests
 ```
 
-## @task Decorator System
+## @task Decorator
 
-Tasks are registered using the `@task` decorator with automatic TypeScript type generation.
-
-### Adding a New Task
+Tasks are registered using the `@task` decorator:
 
 ```python
-# shared/tasks/see/my_task.py
+# shared/tasks/image/my_detector.py
 from ..decorator import task
 
 @task(
-    name="my_task.detect",
-    category="see",
-    capabilities=["detect", "objects"],
+    name="image.my_detect",
+    tags=["image", "ai", "detect"],
     gpu="T4",
     timeout=300,
 )
-def detect(image_path: str, conf: float = 0.25) -> list[dict]:
+def my_detect(image_path: str, conf: float = 0.25) -> list[dict]:
     """Detect objects in an image."""
-    # Implementation
     return [{"label": "cat", "confidence": 0.95}]
 ```
 
 ### Chunking Support
 
-For long-running tasks (audio/video), add chunking config:
+For long-running tasks:
 
 ```python
 @task(
-    name="whisper.transcribe",
-    category="hear",
+    name="audio.transcribe",
+    tags=["audio", "text", "ai", "transcribe"],
+    gpu="T4",
     chunk={
         "input": "audio_path",
         "default_size": "10m",
@@ -544,12 +370,13 @@ def transcribe(audio_path: str) -> dict:
 
 ### Streaming Support
 
-For real-time feedback, use generators:
+For real-time feedback:
 
 ```python
 @task(
-    name="whisper.transcribe_stream",
-    category="hear",
+    name="audio.transcribe_stream",
+    tags=["audio", "text", "ai", "transcribe"],
+    gpu="T4",
     streaming=True,
 )
 def transcribe_stream(audio_path: str) -> Generator[dict, None, None]:
@@ -557,45 +384,10 @@ def transcribe_stream(audio_path: str) -> Generator[dict, None, None]:
         yield {"text": segment.text, "start": segment.start}
 ```
 
-### Generate TypeScript Types
+## Related Projects
 
-```bash
-# Generate types from Python decorators
-pnpm gen:types
-
-# Check if types are up-to-date (for CI)
-pnpm check:types
-```
-
-Output in `packages/core/src/types/generated.ts`:
-
-```typescript
-export type TaskName = "yolo.detect" | "whisper.transcribe" | ...;
-
-export interface TaskPayloads {
-  "yolo.detect": { image_path: string; conf?: number };
-  "whisper.transcribe": { audio_path: string; language?: string };
-}
-
-export const TASK_METADATA: Record<TaskName, TaskMetadata> = { ... };
-```
-
-## Modal Commands
-
-```bash
-# Local development
-cd backends/modal && modal serve app.py
-
-# Deploy to cloud
-modal deploy app.py
-
-# Run task directly
-modal run app.py --task-type openai.chat --payload '{"prompt":"Hi"}'
-
-# Create secrets
-modal secret create openai-secret OPENAI_API_KEY=sk-...
-modal secret create elevenlabs-secret ELEVENLABS_API_KEY=...
-```
+- **[declarative-atomic-ui](https://github.com/Adelost/declarative-atomic-ui)** (DAUI) - Declarative UI framework
+- DWA + DAUI = Full-stack declarative architecture
 
 ## License
 

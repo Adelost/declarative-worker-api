@@ -1,14 +1,15 @@
-# Agent Context: declarative-worker-api
+# Agent Context: Declarative Worker API (DWA)
 
 This document provides context for AI assistants working with this codebase.
 
 ## Project Overview
 
-**declarative-worker-api** is a declarative task/worker system for AI workloads. Tasks are defined as pure data objects (no callbacks, no imperative code). The system supports:
+**declarative-worker-api** (DWA) is a declarative task/worker system for background jobs. Tasks are defined as pure data objects (no callbacks, no imperative code). The system supports:
 
 - **Single tasks**: Direct execution via Modal/Ray backends
 - **Pipelines**: Multi-step workflows with DAG-based parallel execution
 - **Effects**: Side effects triggered at task lifecycle points
+- **Tags**: Flexible task filtering by data type, operation, or resource requirements
 
 ## Architecture
 
@@ -27,14 +28,14 @@ Task (declarative JSON)
 ```typescript
 // CORRECT - Pure data
 const task: Task = {
-  type: "openai.chat",
+  type: "text.chat",
   payload: { prompt: "Hello" },
   onSuccess: [{ $event: "toast", text: "Done!" }]
 };
 
 // WRONG - Imperative code
 const task = {
-  type: "openai.chat",
+  type: "text.chat",
   onSuccess: () => showToast("Done!")  // NO!
 };
 ```
@@ -45,8 +46,8 @@ const task = {
 // CORRECT - Template references
 {
   steps: [
-    { id: "download", task: "download.file", input: { url: "{{payload.url}}" } },
-    { id: "analyze", task: "yolo.detect", input: { image_path: "{{steps.download.path}}" } }
+    { id: "download", task: "data.download", input: { url: "{{payload.url}}" } },
+    { id: "analyze", task: "image.detect", input: { image_path: "{{steps.download.path}}" } }
   ]
 }
 
@@ -59,35 +60,14 @@ const task = {
 }
 ```
 
-### Parallel Execution via Dependencies
+### Tags Instead of Categories
 
-```typescript
-// Steps with dependsOn run in parallel when dependencies satisfied
-{
-  steps: [
-    { id: "a", task: "download" },
-    { id: "b", task: "process1", dependsOn: ["a"] },  // ┐
-    { id: "c", task: "process2", dependsOn: ["a"] },  // ├ These run in parallel
-    { id: "d", task: "process3", dependsOn: ["a"] },  // ┘
-    { id: "e", task: "merge", dependsOn: ["b", "c", "d"] }
-  ]
-}
-```
+```python
+# OLD (don't use)
+@task(name="yolo.detect", category="see", capabilities=["detect"])
 
-### forEach for Array Processing
-
-```typescript
-{
-  id: "describe_frames",
-  task: "florence.caption",
-  dependsOn: ["extract_frames"],
-  forEach: "{{steps.extract_frames.frames}}",  // Array to iterate
-  forEachConcurrency: 4,                        // Parallel limit
-  input: {
-    image_path: "{{item.path}}",  // Current item
-    index: "{{index}}"            // Current index
-  }
-}
+# NEW (correct)
+@task(name="image.detect", tags=["image", "ai", "detect"])
 ```
 
 ## Directory Structure
@@ -98,8 +78,8 @@ packages/
 │   └── src/types/
 │       ├── task.ts          # Task, Step interfaces
 │       ├── effect.ts        # Effect types
-│       ├── backend.ts       # Backend interface
 │       └── generated.ts     # Auto-generated from Python
+├── client/                  # API client
 └── orchestrator/            # Node.js server
     └── src/
         ├── server.ts        # Fastify API
@@ -111,29 +91,35 @@ packages/
             └── streaming.ts     # SSE streaming
 
 backends/
-├── modal/app.py             # Modal backend (auto-registered)
+├── modal/app.py             # Modal backend
 └── ray/serve.py             # Ray backend
 
 shared/tasks/                # Python tasks with @task decorator
 ├── decorator.py             # @task decorator + registry
 ├── discovery.py             # Auto-discovery
-├── types.py                 # TaskMeta, ChunkConfig
-├── see/                     # Vision: yolo, sam2, florence, etc.
-├── hear/                    # Audio: whisper, diarize
-├── think/                   # LLM: openai
-├── speak/                   # TTS: openai_tts, elevenlabs, etc.
-├── get/                     # Input: download, rss
-├── transform/               # Utility: convert, chunk, image
-├── find/                    # Search: semantic, vector
-└── watch/                   # Video: analyze, scenes, tracking
-
-scripts/
-├── gen_types.py             # TypeScript generator
-└── check_types.py           # CI validation
+├── types.py                 # TaskMeta
+├── video/                   # Video: extract, convert, scenes
+│   ├── extract.py           # extract_frames, extract_audio
+│   ├── convert.py           # video/audio format conversion
+│   └── scenes.py            # AI scene detection
+├── audio/                   # Audio: convert, transcribe, tts
+│   ├── convert.py           # format conversion
+│   ├── transcribe.py        # whisper transcription
+│   ├── diarize.py           # speaker diarization
+│   └── tts.py               # text-to-speech
+├── image/                   # Image: transform, detect
+│   ├── transform.py         # resize, crop, compress
+│   └── detect.py            # YOLO detection, segmentation, pose
+├── text/                    # Text: chunk, llm
+│   ├── chunk.py             # text splitting
+│   └── llm.py               # OpenAI, etc.
+└── data/                    # Data: fetch, search, embed
+    ├── fetch.py             # download files
+    ├── rss.py               # RSS feeds
+    └── search.py            # embeddings, vector search
 
 tests/
-├── e2e/                     # Integration tests
-└── packages/*/tests/        # Unit tests
+└── e2e/                     # Integration tests
 ```
 
 ## Important Files
@@ -141,89 +127,79 @@ tests/
 | File | Purpose |
 |------|---------|
 | `packages/core/src/types/task.ts` | Task and Step type definitions |
-| `packages/core/src/types/generated.ts` | Auto-generated TypeScript types |
 | `packages/orchestrator/src/engine/dispatcher.ts` | DAG execution logic |
 | `shared/tasks/decorator.py` | @task decorator + registry |
-| `shared/tasks/discovery.py` | Auto-discovery of tasks |
-| `backends/modal/app.py` | Modal backend (auto-registered) |
+| `shared/tasks/types.py` | TaskMeta with tags |
 
 ## Common Tasks
 
-### Adding a New Task Type
+### Adding a New Task
 
-1. Create task with @task decorator in the appropriate category:
+1. Create task with @task decorator:
 ```python
-# shared/tasks/see/my_detector.py
+# shared/tasks/image/my_detector.py
 from ..decorator import task
 
 @task(
-    name="my_detector.detect",
-    category="see",
-    capabilities=["detect"],
+    name="image.my_detect",
+    tags=["image", "ai", "detect"],
     gpu="T4",
     timeout=300,
 )
-def detect(image_path: str, conf: float = 0.25) -> list[dict]:
+def my_detect(image_path: str, conf: float = 0.25) -> list[dict]:
     """Detect objects in an image."""
     return [{"label": "cat", "confidence": 0.95}]
 ```
 
-2. Regenerate TypeScript types:
-```bash
-pnpm gen:types
+2. Task is automatically discovered and available.
+
+### Standard Tags
+
+| Type | Tags |
+|------|------|
+| Data type | `video`, `audio`, `image`, `text`, `data` |
+| Operation | `transform`, `extract`, `embed`, `search`, `generate`, `detect`, `convert` |
+| AI/Generic | `ai`, `generic` |
+| Resources | `gpu`, `streaming` (auto-added) |
+
+### Filtering Tasks
+
+```python
+from tasks import filter_by_tag, filter_by_tags
+
+filter_by_tag("gpu")                     # All GPU tasks
+filter_by_tag("audio")                   # All audio tasks
+filter_by_tags(["ai", "image"])          # AI + image
+filter_by_tags(["video", "audio"], match_all=False)  # OR
 ```
-
-3. The task is automatically available via Modal backend - no manual registration needed.
-
-### Adding a New Effect
-
-1. Add type in `packages/core/src/types/effect.ts`:
-```typescript
-| { $event: "new-effect"; param: string }
-```
-
-2. Add handler in `packages/orchestrator/src/engine/effects.ts`:
-```typescript
-case "new-effect":
-  await handleNewEffect(effect, context);
-  break;
-```
-
-### Modifying Pipeline Execution
-
-The DAG scheduler is in `packages/orchestrator/src/engine/dispatcher.ts`:
-- `processPipelineDAG()` - Main execution loop
-- `executeStep()` - Single step execution (handles forEach)
-- `getRunnableSteps()` - Finds steps with satisfied dependencies
 
 ## Testing
 
 ```bash
-# All tests (93 total)
+# All tests
 pnpm test
 
-# Unit tests only
-npx vitest run
-
-# E2E tests only
-npx vitest run --config vitest.e2e.config.ts
-
-# Specific test file
+# Specific test
 npx vitest run tests/e2e/parallel-pipeline.test.ts
 ```
 
 ## Don't
 
 - Add imperative callbacks to tasks
-- Import backend-specific code in core package
-- Modify task objects after creation
-- Use `steps.0.result` syntax in DAG mode (use `steps.id.result`)
-- Forget to add `dependsOn` when steps have data dependencies
+- Use `category` or `capabilities` (use `tags` instead)
+- Use old task names like `yolo.detect` (use `image.detect`)
+- Use old folder names like `see/`, `hear/` (use `video/`, `audio/`, etc.)
+- Forget `dependsOn` when steps have data dependencies
 
 ## Do
 
 - Keep tasks as pure JSON-serializable data
-- Use template syntax for data flow: `{{steps.id.field}}`
-- Add `id` to steps for better debugging and DAG execution
-- Test pipelines with mock backend in e2e tests
-- Document new task types in README.md
+- Use `tags` for flexible task metadata
+- Use template syntax: `{{steps.id.field}}`
+- Organize tasks by data type (video, audio, image, text, data)
+- Add appropriate tags: data type + operation + ai/generic
+
+## Related Projects
+
+- **declarative-atomic-ui** (DAUI) - Declarative UI framework
+- DWA handles backend tasks, DAUI handles frontend UI
