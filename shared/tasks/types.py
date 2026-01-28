@@ -3,7 +3,15 @@ Type definitions for the task decorator system.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Any, Generator
+from typing import Callable, Optional, Any, Generator, Type
+
+# Optional Pydantic support
+try:
+    from pydantic import BaseModel
+    HAS_PYDANTIC = True
+except ImportError:
+    BaseModel = None  # type: ignore
+    HAS_PYDANTIC = False
 
 
 @dataclass
@@ -51,6 +59,12 @@ class TaskMeta:
     description: str = ""
     """Task description (from docstring)."""
 
+    input_schema: Optional[Type] = None
+    """Optional Pydantic model for input validation."""
+
+    output_schema: Optional[Type] = None
+    """Optional Pydantic model for output validation."""
+
     @property
     def is_gpu_task(self) -> bool:
         """Check if task requires GPU."""
@@ -73,9 +87,28 @@ class TaskMeta:
         """Check if task has any of the specified tags."""
         return any(t in self.tags for t in tags)
 
+    @property
+    def has_schema(self) -> bool:
+        """Check if task has Pydantic schemas for validation."""
+        return self.input_schema is not None
+
+    def validate_input(self, data: dict) -> Any:
+        """Validate input data against schema (if defined)."""
+        if self.input_schema and HAS_PYDANTIC and issubclass(self.input_schema, BaseModel):
+            return self.input_schema.model_validate(data)
+        return data
+
+    def validate_output(self, data: Any) -> Any:
+        """Validate output data against schema (if defined)."""
+        if self.output_schema and HAS_PYDANTIC and issubclass(self.output_schema, BaseModel):
+            if isinstance(data, self.output_schema):
+                return data
+            return self.output_schema.model_validate(data)
+        return data
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
-        return {
+        result = {
             "name": self.name,
             "tags": self.tags,
             "gpu": self.gpu,
@@ -89,3 +122,11 @@ class TaskMeta:
             } if self.chunk else None,
             "description": self.description,
         }
+
+        # Add JSON Schema if Pydantic models are defined
+        if self.input_schema and HAS_PYDANTIC and issubclass(self.input_schema, BaseModel):
+            result["input_schema"] = self.input_schema.model_json_schema()
+        if self.output_schema and HAS_PYDANTIC and issubclass(self.output_schema, BaseModel):
+            result["output_schema"] = self.output_schema.model_json_schema()
+
+        return result

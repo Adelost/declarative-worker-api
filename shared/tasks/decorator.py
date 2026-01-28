@@ -13,7 +13,7 @@ Usage:
         ...
 """
 
-from typing import Callable, Optional, Any, Union
+from typing import Callable, Optional, Any, Union, Type
 from functools import wraps
 
 from .types import TaskMeta, ChunkConfig
@@ -43,6 +43,8 @@ def task(
     timeout: int = 300,
     streaming: bool = False,
     chunk: Optional[Union[dict, ChunkConfig]] = None,
+    input: Optional[Type] = None,
+    output: Optional[Type] = None,
 ) -> Callable:
     """
     Decorator to register a task function.
@@ -54,9 +56,29 @@ def task(
         timeout: Task timeout in seconds
         streaming: Whether this task yields results incrementally
         chunk: Chunking configuration for long-running tasks
+        input: Optional Pydantic model for input validation
+        output: Optional Pydantic model for output validation
 
     Returns:
         Decorated function with _task_meta attribute
+
+    Example (simple):
+        @task(name="image.detect", tags=["image", "ai"], gpu="T4")
+        def detect(image_path: str, conf: float = 0.25) -> list[dict]:
+            ...
+
+    Example (with Pydantic validation):
+        class DetectInput(BaseModel):
+            image_path: str
+            confidence: float = 0.5
+
+        class DetectOutput(BaseModel):
+            detections: list[dict]
+
+        @task(name="image.detect", tags=["image", "ai"], gpu="T4",
+              input=DetectInput, output=DetectOutput)
+        def detect(input: DetectInput) -> DetectOutput:
+            ...
     """
     tags = tags or []
 
@@ -99,6 +121,8 @@ def task(
             streaming=streaming,
             chunk=chunk_config,
             description=description,
+            input_schema=input,
+            output_schema=output,
         )
 
         # Register task
