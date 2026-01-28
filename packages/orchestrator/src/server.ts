@@ -29,6 +29,18 @@ interface ApiTaskResult<T = unknown> {
   progress?: number;
 }
 
+/** Extended API response for list endpoint (includes type and queue) */
+interface ApiTaskListItem extends ApiTaskResult {
+  type?: string;
+  queue?: string;
+}
+
+type ApiStatus = ApiTaskResult["status"];
+
+function mapStatus(internal: string): ApiStatus {
+  return internal === "pending" ? "queued" : internal as ApiStatus;
+}
+
 /**
  * Maps internal TaskResult to public API response.
  * - id → taskId (semantic naming for SDK users)
@@ -37,10 +49,23 @@ interface ApiTaskResult<T = unknown> {
 function toApiResponse<T = unknown>(internal: TaskResult): ApiTaskResult<T> {
   return {
     taskId: internal.id,
-    status: internal.status === "pending" ? "queued" : internal.status as ApiTaskResult["status"],
+    status: mapStatus(internal.status),
     result: internal.result as T,
     error: internal.error,
     progress: internal.progress,
+  };
+}
+
+/** Maps list item (has extra fields like type, queue) */
+function toApiListItem(internal: TaskResult & { type?: string; queue?: string }): ApiTaskListItem {
+  return {
+    taskId: internal.id,
+    status: mapStatus(internal.status),
+    result: internal.result,
+    error: internal.error,
+    progress: internal.progress,
+    type: internal.type,
+    queue: internal.queue,
   };
 }
 
@@ -128,12 +153,12 @@ fastify.get<{
   const { queue: queueName = "default", status, limit = 50 } = request.query;
 
   const { listTasks } = await import("./queue.js");
-  const tasks = await listTasks(queueName, status, limit);
+  const internalTasks = await listTasks(queueName, status, limit);
 
   return {
     queue: queueName,
-    count: tasks.length,
-    tasks,
+    count: internalTasks.length,
+    tasks: internalTasks.map(toApiListItem),
   };
 });
 
