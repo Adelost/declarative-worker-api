@@ -82,3 +82,47 @@ DAUI (Declarative Atomic UI) är primärt data-driven ("pages are data"), men ti
 - Funktioner hanterar edge cases utan workarounds
 - Användare väljer själva abstraktionsnivå
 - Ingen påtvingad komplexitet för enkla sidor
+
+## Execution Control: runWhen och timeout
+
+Steps stödjer villkorlig exekvering (`runWhen`) och timeouts (`timeout`).
+
+### runWhen
+
+```typescript
+{ id: "step", task: "foo", runWhen: "{{payload.condition}}" }
+```
+
+**Värden:**
+- `"always"` (default): Kör när dependencies är klara
+- `"on-demand"`: Skippa om inte explicit efterfrågad
+- Template-sträng: Kör om template evalueras till truthy
+
+**Varför inte `if`/`when`/`condition`?**
+- `runWhen` är explicit om att det påverkar *exekvering*, inte data
+- Undviker förväxling med input-villkor
+
+**Skippade steps:**
+- Markeras med `status: "skipped"` (redan i StepStatus enum)
+- Resultat: `{ skipped: true, reason: "on-demand" | "condition-false" }`
+- Dependents kan fortfarande köra (step räknas som "completed")
+
+### timeout
+
+```typescript
+{ id: "step", task: "slow.task", timeout: 30 }  // 30 sekunder
+```
+
+**Prioritet:**
+1. `step.timeout` (step-specifik)
+2. `task.resources.timeout` (fallback för hela pipelinen)
+3. Ingen timeout (default)
+
+**Varför på step-nivå?**
+- Olika steps har olika förväntade körtider
+- GPU-tunga AI-tasks behöver längre timeout
+- Snabba I/O-tasks bör faila snabbt
+
+**Timeout-fel:**
+- Kastar `Error: "stepId" timed out after Xms`
+- Hanteras som vanligt step-failure (respekterar `optional: true`)

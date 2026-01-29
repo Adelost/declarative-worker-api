@@ -60,6 +60,32 @@ const task = {
 }
 ```
 
+### Execution Control: runWhen and timeout
+
+Steps support conditional execution and timeouts - no need to add custom logic:
+
+```typescript
+{
+  steps: [
+    { id: "always", task: "data.fetch" },
+    // Skip unless condition is truthy
+    { id: "conditional", task: "data.transform",
+      runWhen: "{{payload.includeTransform}}", dependsOn: ["always"] },
+    // Skip unless explicitly requested (future: on-demand execution)
+    { id: "optional", task: "data.export", runWhen: "on-demand" },
+    // Timeout after 30 seconds
+    { id: "slow", task: "ai.generate", timeout: 30, dependsOn: ["always"] },
+  ]
+}
+```
+
+**runWhen values:**
+- `"always"` (default): Run when dependencies complete
+- `"on-demand"`: Skip unless explicitly requested
+- Template string: Run if template evaluates to truthy value
+
+**timeout:** Step timeout in seconds. Falls back to `task.resources.timeout`.
+
 ### Tags Instead of Categories
 
 ```python

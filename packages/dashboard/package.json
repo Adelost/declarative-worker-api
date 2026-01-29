@@ -1,0 +1,42 @@
+{
+  "name": "@dwa/dashboard",
+  "version": "0.1.0",
+  "description": "Debug dashboard for DWA with DAUI components",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "svelte": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dwa/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@daui/core": "*",
+    "@daui/svelte": "*"
+  },
+  "peerDependenciesMeta": {
+    "@daui/core": {
+      "optional": true
+    },
+    "@daui/svelte": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

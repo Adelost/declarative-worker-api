@@ -201,4 +201,212 @@ describe("Task Dispatcher", () => {
       expect(mockBackend.execute).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("processTask - runWhen conditional execution", () => {
+    it("should skip steps with runWhen='on-demand'", async () => {
+      mockBackend.execute = vi.fn()
+        .mockResolvedValueOnce({ result: "step1" })
+        .mockResolvedValueOnce({ result: "step3" });
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        steps: [
+          { id: "a", task: "step1" },
+          { id: "b", task: "step2", runWhen: "on-demand", dependsOn: ["a"] },
+          { id: "c", task: "step3", dependsOn: ["a"] },
+        ],
+      };
+
+      const result = await processTask(task) as {
+        stepResults: Record<string, unknown>;
+        stepStatus: Array<{ id: string; status: string }>;
+      };
+
+      expect(mockBackend.execute).toHaveBeenCalledTimes(2);
+      expect(result.stepResults["b"]).toEqual({ skipped: true, reason: "on-demand" });
+      expect(result.stepStatus.find(s => s.id === "b")?.status).toBe("skipped");
+    });
+
+    it("should skip steps when template condition is falsy", async () => {
+      mockBackend.execute = vi.fn()
+        .mockResolvedValueOnce({ result: "step1" });
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: { includeOptional: false },
+        steps: [
+          { id: "a", task: "step1" },
+          { id: "b", task: "step2", runWhen: "{{payload.includeOptional}}", dependsOn: ["a"] },
+        ],
+      };
+
+      const result = await processTask(task) as {
+        stepResults: Record<string, unknown>;
+      };
+
+      expect(mockBackend.execute).toHaveBeenCalledTimes(1);
+      expect(result.stepResults["b"]).toEqual({
+        skipped: true,
+        reason: "condition-false",
+        condition: "{{payload.includeOptional}}",
+      });
+    });
+
+    it("should run steps when template condition is truthy", async () => {
+      mockBackend.execute = vi.fn()
+        .mockResolvedValueOnce({ result: "step1" })
+        .mockResolvedValueOnce({ result: "step2" });
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: { includeOptional: true },
+        steps: [
+          { id: "a", task: "step1" },
+          { id: "b", task: "step2", runWhen: "{{payload.includeOptional}}", dependsOn: ["a"] },
+        ],
+      };
+
+      const result = await processTask(task) as {
+        stepResults: Record<string, unknown>;
+      };
+
+      expect(mockBackend.execute).toHaveBeenCalledTimes(2);
+      expect(result.stepResults["b"]).toEqual({ result: "step2" });
+    });
+
+    it("should run steps with runWhen='always' (default behavior)", async () => {
+      mockBackend.execute = vi.fn()
+        .mockResolvedValueOnce({ result: "step1" })
+        .mockResolvedValueOnce({ result: "step2" });
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        steps: [
+          { id: "a", task: "step1" },
+          { id: "b", task: "step2", runWhen: "always", dependsOn: ["a"] },
+        ],
+      };
+
+      const result = await processTask(task) as {
+        stepResults: Record<string, unknown>;
+      };
+
+      expect(mockBackend.execute).toHaveBeenCalledTimes(2);
+      expect(result.stepResults["b"]).toEqual({ result: "step2" });
+    });
+  });
+
+  describe("processTask - runWhen in sequential mode", () => {
+    it("should skip steps with runWhen condition in sequential mode", async () => {
+      mockBackend.execute = vi.fn()
+        .mockResolvedValueOnce({ result: "step1" })
+        .mockResolvedValueOnce({ result: "step3" });
+
+      // No step IDs = sequential mode
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: { skip: false },
+        steps: [
+          { task: "step1" },
+          { task: "step2", runWhen: "{{payload.skip}}" },
+          { task: "step3" },
+        ],
+      };
+
+      const result = await processTask(task) as {
+        steps: unknown[];
+        stepStatus: Array<{ id: string; status: string }>;
+      };
+
+      expect(mockBackend.execute).toHaveBeenCalledTimes(2);
+      expect(result.steps[1]).toEqual({
+        skipped: true,
+        reason: "condition-false",
+        condition: "{{payload.skip}}",
+      });
+      expect(result.stepStatus[1].status).toBe("skipped");
+    });
+  });
+
+  describe("processTask - timeout enforcement", () => {
+    it("should timeout step after specified seconds", async () => {
+      // Slow backend that takes 100ms
+      mockBackend.execute = vi.fn().mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ result: "done" }), 100))
+      );
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        steps: [
+          { id: "slow", task: "slow.task", timeout: 0.01 }, // 10ms timeout
+        ],
+      };
+
+      await expect(processTask(task)).rejects.toThrow('"slow" timed out after 10ms');
+    });
+
+    it("should complete before timeout", async () => {
+      // Fast backend that takes 10ms
+      mockBackend.execute = vi.fn().mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ result: "done" }), 10))
+      );
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        steps: [
+          { id: "fast", task: "fast.task", timeout: 1 }, // 1s timeout
+        ],
+      };
+
+      const result = await processTask(task) as { stepResults: Record<string, unknown> };
+      expect(result.stepResults["fast"]).toEqual({ result: "done" });
+    });
+
+    it("should use task.resources.timeout as fallback", async () => {
+      mockBackend.execute = vi.fn().mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ result: "done" }), 100))
+      );
+
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        resources: { timeout: 0.01 }, // 10ms timeout at task level
+        steps: [
+          { id: "slow", task: "slow.task" }, // No step-level timeout
+        ],
+      };
+
+      await expect(processTask(task)).rejects.toThrow('"slow" timed out after 10ms');
+    });
+
+    it("should timeout in sequential mode", async () => {
+      mockBackend.execute = vi.fn().mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ result: "done" }), 100))
+      );
+
+      // No step IDs = sequential mode
+      const task: Task = {
+        type: "pipeline",
+        backend: "modal",
+        payload: {},
+        steps: [
+          { task: "slow.task", timeout: 0.01 }, // 10ms timeout
+        ],
+      };
+
+      await expect(processTask(task)).rejects.toThrow('"step_0" timed out after 10ms');
+    });
+  });
 });

@@ -24,6 +24,7 @@ export interface StepStatus {
   duration?: number;
   error?: string;
   result?: unknown;
+  retryAttempt?: number;  // Current retry attempt (1, 2, 3...)
 }
 
 /** Pipeline execution result with full observability */
@@ -55,11 +56,35 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Execute with timeout. Rejects if execution exceeds timeout.
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`"${label}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutHandle!);
+  }
+}
+
+/**
  * Execute a task with retry logic.
  */
 async function executeWithRetry(
   task: Task,
-  executor: () => Promise<unknown>
+  executor: () => Promise<unknown>,
+  onRetry?: (attempt: number, maxAttempts: number) => void
 ): Promise<unknown> {
   const retry = task.retry;
   if (!retry || !retry.attempts || retry.attempts <= 1) {
@@ -70,6 +95,9 @@ async function executeWithRetry(
   const delay = retry.delay || 1000;
 
   for (let attempt = 1; attempt <= retry.attempts; attempt++) {
+    // Report retry attempt
+    onRetry?.(attempt, retry.attempts);
+
     try {
       return await executor();
     } catch (error) {
@@ -219,8 +247,34 @@ async function processPipelineDAG(
   ): Promise<{ id: string; result?: unknown; error?: Error }> {
     running.add(stepId);
 
-    // Update status to running
+    // Get status reference
     const status = stepStatuses.get(stepId)!;
+
+    // Check runWhen condition BEFORE marking as running
+    if (step.runWhen && step.runWhen !== "always") {
+      if (step.runWhen === "on-demand") {
+        // on-demand steps are skipped unless explicitly needed
+        status.status = "skipped";
+        running.delete(stepId);
+        completed.add(stepId);
+        results[stepId] = { skipped: true, reason: "on-demand" };
+        emit("step:complete", stepId, { skipped: true });
+        return { id: stepId, result: results[stepId] };
+      }
+
+      // Template condition - evaluate
+      const conditionResult = resolveTemplate(step.runWhen, context);
+      if (!conditionResult) {
+        status.status = "skipped";
+        running.delete(stepId);
+        completed.add(stepId);
+        results[stepId] = { skipped: true, reason: "condition-false", condition: step.runWhen };
+        emit("step:complete", stepId, { skipped: true, condition: step.runWhen });
+        return { id: stepId, result: results[stepId] };
+      }
+    }
+
+    // Update status to running
     status.status = "running";
     status.startedAt = new Date();
     emit("step:start", stepId);
@@ -260,8 +314,18 @@ async function processPipelineDAG(
               retry: step.retry || task.retry,
             };
 
-            const backend = await selectBackend(stepTask);
-            return executeWithRetry(stepTask, () => backend.execute(stepTask));
+            const executeItem = async () => {
+              const backend = await selectBackend(stepTask);
+              return executeWithRetry(stepTask, () => backend.execute(stepTask), (attempt) => {
+                status.retryAttempt = attempt;
+              });
+            };
+
+            // Get timeout from step or task resources
+            const timeoutSeconds = step.timeout || task.resources?.timeout;
+            return timeoutSeconds
+              ? withTimeout(executeItem(), timeoutSeconds * 1000, `${stepId}[${index}]`)
+              : executeItem();
           });
 
           const batchResults = await Promise.all(batchPromises);
@@ -293,10 +357,18 @@ async function processPipelineDAG(
         retry: step.retry || task.retry,
       };
 
-      const backend = await selectBackend(stepTask);
-      const result = await executeWithRetry(stepTask, () =>
-        backend.execute(stepTask)
-      );
+      const executeBackend = async () => {
+        const backend = await selectBackend(stepTask);
+        return executeWithRetry(stepTask, () => backend.execute(stepTask), (attempt) => {
+          status.retryAttempt = attempt;
+        });
+      };
+
+      // Get timeout from step or task resources
+      const timeoutSeconds = step.timeout || task.resources?.timeout;
+      const result = timeoutSeconds
+        ? await withTimeout(executeBackend(), timeoutSeconds * 1000, stepId)
+        : await executeBackend();
 
       running.delete(stepId);
       completed.add(stepId);
@@ -455,10 +527,34 @@ async function processPipelineSequential(
     const status: StepStatus = {
       id: stepId,
       task: step.task,
-      status: "running",
+      status: "pending",
       startedAt: new Date(),
     };
     stepStatuses.push(status);
+
+    // Check runWhen condition BEFORE marking as running
+    if (step.runWhen && step.runWhen !== "always") {
+      if (step.runWhen === "on-demand") {
+        status.status = "skipped";
+        status.completedAt = new Date();
+        status.duration = 0;
+        stepResults.push({ skipped: true, reason: "on-demand" });
+        emit("step:complete", stepId, { skipped: true });
+        continue;
+      }
+
+      const conditionResult = resolveTemplate(step.runWhen, context);
+      if (!conditionResult) {
+        status.status = "skipped";
+        status.completedAt = new Date();
+        status.duration = 0;
+        stepResults.push({ skipped: true, reason: "condition-false", condition: step.runWhen });
+        emit("step:complete", stepId, { skipped: true, condition: step.runWhen });
+        continue;
+      }
+    }
+
+    status.status = "running";
     emit("step:start", stepId);
 
     try {
@@ -472,10 +568,18 @@ async function processPipelineSequential(
         retry: step.retry || task.retry,
       };
 
-      const backend = await selectBackend(stepTask);
-      const result = await executeWithRetry(stepTask, () =>
-        backend.execute(stepTask)
-      );
+      const executeBackend = async () => {
+        const backend = await selectBackend(stepTask);
+        return executeWithRetry(stepTask, () => backend.execute(stepTask), (attempt) => {
+          status.retryAttempt = attempt;
+        });
+      };
+
+      // Get timeout from step or task resources
+      const timeoutSeconds = step.timeout || task.resources?.timeout;
+      const result = timeoutSeconds
+        ? await withTimeout(executeBackend(), timeoutSeconds * 1000, stepId)
+        : await executeBackend();
 
       stepResults.push(result);
       context.steps = stepResults;
